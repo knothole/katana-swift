@@ -14,7 +14,7 @@ public protocol AnySideEffectContext {
   func getAnyState() -> State
   
   @discardableResult
-  func dispatch(_ dispatchable: Dispatchable) -> Promise<Void>
+  func dispatch(_ dispatchable: Dispatchable) -> StorePromise<Void>
 }
 
 public struct SideEffectContext<S, D> where S: State, D: SideEffectDependencyContainer {
@@ -33,7 +33,7 @@ public struct SideEffectContext<S, D> where S: State, D: SideEffectDependencyCon
   }
   
   @discardableResult
-  public func dispatch(_ dispatchable: Dispatchable) -> Promise<Void> {
+  public func dispatch(_ dispatchable: Dispatchable) -> StorePromise<Void> {
     return self.dispatchClosure(dispatchable)
   }
 }

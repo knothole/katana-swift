@@ -14,7 +14,7 @@ public protocol AnyStore: class {
   var anyState: State { get }
   
   @discardableResult
-  func dispatch(_ dispatchable: Dispatchable) -> Promise<Void>
+  func dispatch(_ dispatchable: Dispatchable) -> StorePromise<Void>
   
   /**
    Adds a listener to the store. A listener is basically a closure that is invoked
@@ -47,7 +47,7 @@ open class PartialStore<S: State>: AnyStore {
   }
   
   @discardableResult
-  public func dispatch(_ dispatchable: Dispatchable) -> Promise<Void> {
+  public func dispatch(_ dispatchable: Dispatchable) -> StorePromise<Void> {
     fatalError("This should not be invoked, as PartialStore should never be used directly. Use Store instead")
   }
   
@@ -202,7 +202,7 @@ open class Store<S: State, D: SideEffectDependencyContainer>: PartialStore<S> {
   }
   
   @discardableResult
-  override public func dispatch(_ dispatchable: Dispatchable) -> Promise<Void> {
+  override public func dispatch(_ dispatchable: Dispatchable) -> StorePromise<Void> {
     if let _ = dispatchable as? AnyStateUpdater & AnySideEffect {
       fatalError("The parameter cannot implement both the state updater and the side effect")
     }
@@ -237,8 +237,6 @@ private extension Store {
     self.isReady = true
     self.sideEffectQueue.resume()
     self.stateUpdaterQueue.resume()
-    
-    SharedStoreContainer.sharedStore = self
   }
   
   private func getState() -> S {
@@ -254,7 +252,7 @@ private extension Store {
 
 // MARK: State Updater management
 fileprivate extension Store {
-  private func enqueueStateUpdater(_ stateUpdater: AnyStateUpdater) -> Promise<Void> {
+  private func enqueueStateUpdater(_ stateUpdater: AnyStateUpdater) -> StorePromise<Void> {
     let promise = Promise<Void>(in: .custom(queue: self.stateUpdaterQueue)) { [unowned self] resolve, reject, _ in
       let interceptorsChain = Store.chainedInterceptors(self.initializedInterceptors, with: self.manageUpdateState)
       try interceptorsChain(stateUpdater)
@@ -262,7 +260,7 @@ fileprivate extension Store {
     }
     
     // triggers the execution of the promise even though no one is listening for it
-    return promise.void
+    return promise.void.bounded(to: self)
   }
   
   private func manageUpdateState(_ dispatchable: Dispatchable) throws {
@@ -294,13 +292,13 @@ fileprivate extension Store {
 
 // MARK: Side Effect management
 fileprivate extension Store {
-  private func enqueueSideEffect(_ sideEffect: AnySideEffect) -> Promise<Void> {
+  private func enqueueSideEffect(_ sideEffect: AnySideEffect) -> StorePromise<Void> {
     let promise = async(in: .custom(queue: self.sideEffectQueue), token: nil) { [unowned self] _ -> Void in
       let interceptorsChain = Store.chainedInterceptors(self.initializedInterceptors, with: self.manageSideEffect)
       try interceptorsChain(sideEffect)
     }
     
-    return promise.void
+    return promise.void.bounded(to: self)
   }
   
   private func manageSideEffect(_ dispatchable: Dispatchable) throws -> Void {
@@ -321,7 +319,7 @@ fileprivate extension Store {
 
 // MARK: Action management
 fileprivate extension Store {
-  private func enqueueAction(_ action: Action) -> Promise<Void> {
+  private func enqueueAction(_ action: Action) -> StorePromise<Void> {
     let promise = Promise<Void>(in: .custom(queue: self.stateUpdaterQueue)) { [unowned self] resolve, reject, _ in
       let interceptorsChain = Store.chainedInterceptors(self.initializedInterceptors, with: self.manageAction)
       try interceptorsChain(action)
@@ -329,7 +327,7 @@ fileprivate extension Store {
     }
     
     // triggers the execution of the promise even though no one is listening for it
-    return promise.void
+    return promise.void.bounded(to: self)
   }
   
   private func manageAction(_ dispatchable: Dispatchable) throws -> Void {
